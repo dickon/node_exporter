@@ -62,7 +62,7 @@ func registerCollector(collector string, isDefaultEnabled bool, factory func(log
 	} else {
 		helpDefaultState = "disabled"
 	}
-
+	fmt.Println("register collector ", collector)
 	flagName := fmt.Sprintf("collector.%s", collector)
 	flagHelp := fmt.Sprintf("Enable the %s collector (default: %s).", collector, helpDefaultState)
 	defaultValue := fmt.Sprintf("%v", isDefaultEnabled)
@@ -116,6 +116,7 @@ func NewNodeCollector(logger log.Logger, filters ...string) (*NodeCollector, err
 	}
 	collectors := make(map[string]Collector)
 	for key, enabled := range collectorState {
+		level.Info(logger).Log("msg", "Collector", key)
 		if *enabled {
 			collector, err := factories[key](log.With(logger, "collector", key))
 			if err != nil {

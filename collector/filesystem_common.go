@@ -54,7 +54,7 @@ type filesystemCollector struct {
 }
 
 type filesystemLabels struct {
-	device, mountPoint, fsType, options string
+	device, mountPoint, fsType string
 }
 
 type filesystemStats struct {

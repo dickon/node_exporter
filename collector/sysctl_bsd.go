@@ -20,7 +20,6 @@ import (
 	"fmt"
 	"unsafe"
 
-	"github.com/prometheus/client_golang/prometheus"
 	"golang.org/x/sys/unix"
 )
 
@@ -47,9 +46,6 @@ type bsdSysctl struct {
 
 	// Simple prometheus description
 	description string
-
-	// Prometheus type
-	valueType prometheus.ValueType
 
 	// Sysctl name
 	mib string

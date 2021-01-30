@@ -120,7 +120,7 @@ skip-test-e2e:
 	@echo ">> SKIP running end-to-end tests on $(GOHOSTOS)"
 
 .PHONY: checkmetrics
-checkmetrics: $(PROMTOOL)
+checkmetrics:
 	@echo ">> checking metrics for correctness"
 	./checkmetrics.sh $(PROMTOOL) $(e2e-out)
 
@@ -139,4 +139,4 @@ promtool: $(PROMTOOL)
 
 $(PROMTOOL):
 	mkdir -p $(FIRST_GOPATH)/bin
-	curl -fsS -L $(PROMTOOL_URL) | tar -xvzf - -C $(FIRST_GOPATH)/bin --no-anchored --strip 1 promtool
+	curl -fsS -L $(PROMTOOL_URL) | tar -xvzf - /tmp
