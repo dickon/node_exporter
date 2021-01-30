@@ -29,6 +29,7 @@ import (
 type powermetricsCollector struct {
 	logger  log.Logger
 	cputemp float64
+	gputemp float64
 }
 
 func init() {
@@ -61,16 +62,19 @@ func NewPowermetricsCollector(logger log.Logger) (Collector, error) {
 			line := stdoutScanner.Text()
 			colspl := strings.Split(line, ": ")
 			level.Info(logger).Log("msg", strings.Join(colspl, "|"))
-			if len(colspl) == 2 && colspl[0] == "CPU die temperature" {
+			if len(colspl) == 2 && (colspl[0] == "CPU die temperature" || colspl[0] == "GPU die temperature") {
 				spl := strings.Split(colspl[1], " ")
 				level.Info(logger).Log("msg", strings.Join(spl, "|"))
 				x, err2 := strconv.ParseFloat(spl[0], 64)
 				if err2 == nil {
-					r.cputemp = x
-					level.Info(logger).Log("cpu temp", r.cputemp)
+					if colspl[0] == "CPU die temperature" {
+						r.cputemp = x
+					}
+					if colspl[0] == "GPU die temperature" {
+						r.gputemp = x
+					}
 				}
 			}
-
 		}
 	}()
 	return r, nil
@@ -78,5 +82,6 @@ func NewPowermetricsCollector(logger log.Logger) (Collector, error) {
 
 func (p *powermetricsCollector) Update(ch chan<- prometheus.Metric) error {
 	ch <- prometheus.MustNewConstMetric(temperature, prometheus.GaugeValue, p.cputemp, "cpu")
+	ch <- prometheus.MustNewConstMetric(temperature, prometheus.GaugeValue, p.gputemp, "gpu")
 	return nil
 }
