@@ -52,13 +52,11 @@ var (
 			sourceName: "CPU die temperature",
 			target:     temperature,
 			field:      "cpu",
-			mu:         &sync.Mutex{},
 		},
 		&parameter{
 			sourceName: "GPU die temperature",
 			target:     temperature,
 			field:      "gpu",
-			mu:         &sync.Mutex{},
 		},
 	}
 )
@@ -84,6 +82,9 @@ func readParameter(p *parameter) (float64, bool) {
 func NewPowermetricsCollector(logger log.Logger) (Collector, error) {
 	r := &powermetricsCollector{
 		logger: logger,
+	}
+	for _, parameter := range parameters {
+		parameter.mu = &sync.Mutex{}
 	}
 	level.Info(logger).Log("starting")
 	go func() {
