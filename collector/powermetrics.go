@@ -29,12 +29,14 @@ import (
 )
 
 type parameter struct {
-	sourceName string
-	target     *prometheus.Desc
-	field      string
-	value      float64
-	populated  bool
-	mu         *sync.Mutex
+	sourceName  string
+	target      *prometheus.Desc
+	field       string
+	value       float64
+	populated   bool
+	scaleFactor float64
+	slot        int
+	mu          *sync.Mutex
 }
 
 type powermetricsCollector struct {
@@ -47,6 +49,31 @@ var (
 		"Temperature reading",
 		[]string{"point"}, nil,
 	)
+	thermalLevel = prometheus.NewDesc(
+		prometheus.BuildFQName(namespace, "powermetrics", "thermal_level"),
+		"Thermal level",
+		[]string{"point"}, nil,
+	)
+	fan = prometheus.NewDesc(
+		prometheus.BuildFQName(namespace, "powermetrics", "fan"),
+		"Fan",
+		[]string{"point"}, nil,
+	)
+	diskIops = prometheus.NewDesc(
+		prometheus.BuildFQName(namespace, "powermetrics", "disk_iops"),
+		"Disk IOPS",
+		[]string{"mode"}, nil,
+	)
+	diskBandwidth = prometheus.NewDesc(
+		prometheus.BuildFQName(namespace, "powermetrics", "disk_bandwidth"),
+		"Disk bandwidth",
+		[]string{"point"}, nil,
+	)
+	power = prometheus.NewDesc(
+		prometheus.BuildFQName(namespace, "powermetrics", "processor_power"),
+		"Processor power",
+		[]string{"point"}, nil,
+	)
 	parameters = [...]*parameter{
 		&parameter{
 			sourceName: "CPU die temperature",
@@ -57,6 +84,50 @@ var (
 			sourceName: "GPU die temperature",
 			target:     temperature,
 			field:      "gpu",
+		},
+		&parameter{
+			sourceName: "CPU Thermal level",
+			target:     thermalLevel,
+			field:      "cpu",
+		},
+		&parameter{
+			sourceName: "GPU Thermal level",
+			target:     thermalLevel,
+			field:      "gpu",
+		},
+		&parameter{
+			sourceName: "Fan",
+			target:     fan,
+			field:      "system",
+		},
+		&parameter{
+			sourceName: "read",
+			target:     diskIops,
+			field:      "read",
+		},
+		&parameter{
+			sourceName: "write",
+			target:     diskIops,
+			field:      "write",
+		},
+		&parameter{
+			sourceName:  "read",
+			target:      diskBandwidth,
+			field:       "read",
+			scaleFactor: 1000,
+			slot:        2,
+		},
+		&parameter{
+			sourceName:  "write",
+			target:      diskBandwidth,
+			field:       "write",
+			scaleFactor: 1000,
+			slot:        2,
+		},
+		&parameter{
+			sourceName: "Intel energy model derived package power (CPUs+GT+SA)",
+			target:     power,
+			field:      "cpu",
 		},
 	}
 )
@@ -102,9 +173,12 @@ func NewPowermetricsCollector(logger log.Logger) (Collector, error) {
 			for _, parameter := range parameters {
 				if len(colspl) == 2 && colspl[0] == parameter.sourceName {
 					spl := strings.Split(colspl[1], " ")
-					x, err2 := strconv.ParseFloat(spl[0], 64)
+					x, err2 := strconv.ParseFloat(spl[parameter.slot], 64)
 
 					if err2 == nil {
+						if parameter.scaleFactor != 0 {
+							x *= parameter.scaleFactor
+						}
 						setParameter(parameter, x)
 					}
 					level.Info(logger).Log("msg", fmt.Sprintf("parameter %vc field %s value [%f] populate [%t]", parameter.target, parameter.field, parameter.value, parameter.populated))
