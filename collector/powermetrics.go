@@ -17,37 +17,73 @@ package collector
 
 import (
 	"bufio"
+	"fmt"
 	"os/exec"
 	"strconv"
 	"strings"
+	"sync"
 
 	"github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
 	"github.com/prometheus/client_golang/prometheus"
 )
 
-type powermetricsCollector struct {
-	logger  log.Logger
-	cputemp float64
-	gputemp float64
+type parameter struct {
+	sourceName string
+	target     *prometheus.Desc
+	field      string
+	value      float64
+	populated  bool
+	mu         *sync.Mutex
 }
 
-func init() {
-	registerCollector("powermetrics", defaultEnabled, NewPowermetricsCollector)
+type powermetricsCollector struct {
+	logger log.Logger
 }
 
 var (
 	temperature = prometheus.NewDesc(
 		prometheus.BuildFQName(namespace, "powermetrics", "temperature"),
-		"Seconds the CPUs spent in each mode.",
+		"Temperature reading",
 		[]string{"point"}, nil,
 	)
+	parameters = [...]*parameter{
+		&parameter{
+			sourceName: "CPU die temperature",
+			target:     temperature,
+			field:      "cpu",
+			mu:         &sync.Mutex{},
+		},
+		&parameter{
+			sourceName: "GPU die temperature",
+			target:     temperature,
+			field:      "gpu",
+			mu:         &sync.Mutex{},
+		},
+	}
 )
+
+func init() {
+	registerCollector("powermetrics", defaultEnabled, NewPowermetricsCollector)
+}
+
+func setParameter(p *parameter, x float64) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	p.value = x
+	p.populated = true
+}
+
+func readParameter(p *parameter) (float64, bool) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	return p.value, p.populated
+
+}
 
 func NewPowermetricsCollector(logger log.Logger) (Collector, error) {
 	r := &powermetricsCollector{
-		logger:  logger,
-		cputemp: 0,
+		logger: logger,
 	}
 	level.Info(logger).Log("starting")
 	go func() {
@@ -61,18 +97,16 @@ func NewPowermetricsCollector(logger log.Logger) (Collector, error) {
 		for stdoutScanner.Scan() {
 			line := stdoutScanner.Text()
 			colspl := strings.Split(line, ": ")
-			level.Info(logger).Log("msg", strings.Join(colspl, "|"))
-			if len(colspl) == 2 && (colspl[0] == "CPU die temperature" || colspl[0] == "GPU die temperature") {
-				spl := strings.Split(colspl[1], " ")
-				level.Info(logger).Log("msg", strings.Join(spl, "|"))
-				x, err2 := strconv.ParseFloat(spl[0], 64)
-				if err2 == nil {
-					if colspl[0] == "CPU die temperature" {
-						r.cputemp = x
+			level.Info(logger).Log("msg", "fields", strings.Join(colspl, "|"))
+			for _, parameter := range parameters {
+				if len(colspl) == 2 && colspl[0] == parameter.sourceName {
+					spl := strings.Split(colspl[1], " ")
+					x, err2 := strconv.ParseFloat(spl[0], 64)
+
+					if err2 == nil {
+						setParameter(parameter, x)
 					}
-					if colspl[0] == "GPU die temperature" {
-						r.gputemp = x
-					}
+					level.Info(logger).Log("msg", fmt.Sprintf("parameter %vc field %s value [%f] populate [%t]", parameter.target, parameter.field, parameter.value, parameter.populated))
 				}
 			}
 		}
@@ -81,7 +115,12 @@ func NewPowermetricsCollector(logger log.Logger) (Collector, error) {
 }
 
 func (p *powermetricsCollector) Update(ch chan<- prometheus.Metric) error {
-	ch <- prometheus.MustNewConstMetric(temperature, prometheus.GaugeValue, p.cputemp, "cpu")
-	ch <- prometheus.MustNewConstMetric(temperature, prometheus.GaugeValue, p.gputemp, "gpu")
+	for _, parameter := range &parameters {
+		x, populated := readParameter(parameter)
+		if populated {
+			ch <- prometheus.MustNewConstMetric(parameter.target, prometheus.GaugeValue, x, parameter.field)
+		}
+	}
+
 	return nil
 }
